@@ -19,3 +19,9 @@ Java runtime enviroment
 ![preform_diagnostics_mode](https://raw.githubusercontent.com/Nume1977/Nova3D-File-Manager/master/imgs/image1.png)
 
 ![preform_diagnostics_mode](https://raw.githubusercontent.com/Nume1977/Nova3D-File-Manager/master/imgs/image2.png)
+
+#### Download
+
+Download Nova3D File Manager.jar, that's it!
+
+Other files are the source code, programmed in B4J, you can also download them and make your own contributions.
