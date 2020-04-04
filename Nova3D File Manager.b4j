@@ -1,0 +1,750 @@
+﻿AppType=JavaFX
+Build1=Default,b4j.example
+File1=elfin.jpg
+File2=Main.bjl
+File3=nova-001.png
+File4=nova-002.png
+File5=NovaMaker.ico
+File6=tab_files.bjl
+File7=tab_options.bjl
+File8=tab_printer.bjl
+FileGroup1=Default Group
+FileGroup2=Default Group
+FileGroup3=Default Group
+FileGroup4=Default Group
+FileGroup5=Default Group
+FileGroup6=Default Group
+FileGroup7=Default Group
+FileGroup8=Default Group
+Group=Default Group
+Library1=jcore
+Library2=jfx
+Library3=b4xcollections
+Library4=xui views
+Library5=jrandomaccessfile
+Library6=json
+Library7=javaobject
+Library8=jokhttputils2
+Library9=draganddrop2
+Module1=functions
+NumberOfFiles=8
+NumberOfLibraries=9
+NumberOfModules=1
+Version=8.1
+@EndOfDesignText@
+#Region Project Attributes 
+	#MainFormWidth: 600
+	#MainFormHeight: 600 
+#End Region
+
+Sub Process_Globals
+	
+	' ********************
+	' -> Free software <-
+	' ********************
+	
+	
+	' ******************
+	'	Libraries used:
+	'
+	' 	B4XCollections
+	'	DragnDrop2
+	'	JavaObject
+	'	jCore
+	'	jFX
+	'	jOkHttpUtils2
+	'	Json
+	'	XUI Views
+	' ******************
+	
+	
+
+	
+	Private xui As XUI
+	Private DragAndDrop1 As DragAndDrop ' DragnDrop2 Library
+
+	Dim Save_Path As String = File.DirApp
+	Dim Current_File As String = ""
+	Dim Is_Printing As Boolean = False
+	Dim Is_Paused As Boolean = False
+	Dim Current_uuid As String =""
+	Dim Used_Space As Int
+	Dim FirstTime As Boolean = True
+	
+	Dim Title As String ="Nova3D File Manager"
+	Dim Version As String = "1.0.2004040" ' Version: MAJOR.MINOR.YEAR2 MONTH2 DAY2 DAILYREVISION1 (YYMMDDR)
+	Dim IP_Port = "8081" ' The printer web server port ' Not yet used
+	
+	Private Timer1 As Timer
+	Dim elfin As Image 
+	Dim layer_image As Image
+	
+	Private fx As JFX
+	Private MainForm As Form
+	Private TabPane1 As TabPane
+	Private Button_Delete As Button
+	Private Button_Print As Button
+	Private Button_Upload As Button
+	Private Label_status As Label
+	Private Button_Save As Button
+	Private TextField_Delay As TextField
+	Private TextField_IP As TextField
+	Private TextField_Retries As TextField
+	Private TableView_Files As TableView
+	Private Button_Reconnect As Button
+	Private Label_Space As Label
+	Private Button_Pause As Button
+	Private Button_Resume As Button
+	Private Button_Stop As Button
+	Private ImageView_Layer As ImageView
+	Private Label_FileName As Label
+	Private Label_LayerHeight As Label
+	Private Label_Layers As Label
+	Private ProgressBar_print As ProgressBar
+	Private Label_printstatus As Label
+	Private Label_version As Label
+	Private Label_serialnb As Label
+	Private Label_fw As Label
+End Sub
+
+Sub AppStart (Form1 As Form, Args() As String)
+	
+	' **** Default settings / Load settings
+	functions.SettingsMap.Initialize	
+	functions.SettingsMap.Put( "IP", "192.168.1.1")
+	functions.SettingsMap.Put( "DELAY", "5")
+	functions.SettingsMap.Put( "RETRIES", "5")
+	functions.SettingsMap.Put( "DIR", File.DirApp)
+	
+	If File.Exists(Save_Path,"settings.conf") Then
+		functions.loadSettings(Save_Path, "settings.conf")
+	Else
+		functions.saveSettings(Save_Path, "settings.conf")
+	End If
+	
+	
+	' Load the Elfin image and create a blank for the printer layers
+	elfin = fx.LoadImage(File.DirAssets,"elfin.jpg")
+		
+	MainForm = Form1
+	MainForm.Initialize("MainForm", 1000, 700) ' Window Size
+	MainForm.RootPane.LoadLayout("Main") 'Load the layout file.
+	MainForm.Icon = fx.LoadImage(File.DirAssets, "nova-001.png")
+	MainForm.Title = Title
+	
+	functions.CenterForm(MainForm)
+	
+	
+	' GUI set up stuff
+	
+	Dim x As B4XView = TabPane1
+	x.Font = xui.CreateFontAwesome(15) 'this sets the CSS font property
+	
+	' Tabs FontAwsome setup
+	TabPane1.LoadLayout("tab_files", Chr(0xF016) & " Files")
+	TabPane1.LoadLayout("tab_printer", Chr(0xF02F) & " Printer")
+	TabPane1.LoadLayout("tab_options", Chr(0xF1DE) & " Options")
+
+	TextField_IP.Text = functions.SettingsMap.Get("IP")
+	TextField_Delay.Text = functions.SettingsMap.Get("DELAY")
+	TextField_Retries.text = functions.SettingsMap.Get("RETRIES")
+
+	TableView_Files.SetColumnWidth(0,TableView_Files.prefWidth * 0.40)
+	TableView_Files.SetColumnWidth(1,TableView_Files.prefWidth * 0.25)
+	TableView_Files.SetColumnWidth(2,TableView_Files.prefWidth * 0.30)
+
+	Label_status.Text = "Printer not connected!"
+	Label_version.Text = "Software Version: " & Version
+	ImageView_Layer.SetImage(elfin) ' Pretty printer
+	
+	DragAndDrop1.Initialize(Me)
+	DragAndDrop1.MakeDragTarget(TableView_Files, "DropTarget")
+	
+	Sleep(0) ' Why not :P
+	
+	MainForm.Show ' Ocuspocus
+	
+	Timer1.Initialize("Timer1", functions.SettingsMap.Get("RETRIES")*1000) ' Timed events for when printing 
+	Timer1.Enabled = False ' Timer is on hold until the print starts
+	
+	Sleep(functions.SettingsMap.Get("DELAY")) ' Wait before connect
+	Printer_GetFileList(functions.SettingsMap.Get("IP")) ' Connect
+
+	If FirstTime Then
+		FirstTime = False
+		CallSubDelayed(Me,"Printer_GetInfo")
+	End If
+	
+End Sub
+
+'Return true to allow the default exceptions handler to handle the uncaught exception.
+Sub Application_Error (Error As Exception, StackTrace As String) As Boolean
+	Return True
+End Sub
+
+
+
+Sub Button_Delete_Click
+	If Current_File.Length > 0 Then ' Check if the file is still there
+		Dim sf As Object = xui.Msgbox2Async("Are you sure you want to delete: " & CRLF & CRLF & Current_File & CRLF , "", "Yes", "", "No", Null)
+		
+		Wait For (sf) Msgbox_Result (Result As Int)
+		If Result = xui.DialogResponse_Positive Then
+			
+			Printer_DeleteFile(functions.SettingsMap.Get("IP"),Current_File)
+			Current_File = ""
+						
+			Dim jo As JavaObject = TableView_Files
+			jo.RunMethodJO("getSelectionModel",Null).RunMethod("clearSelection",Null)
+			
+		End If
+	Else
+		xui.MsgboxAsync("No file selected!" ,"Attention")
+	End If
+	
+End Sub
+
+
+
+Sub Button_Print_Click
+	If Current_File.Length > 0 Then ' Check if the file is still there
+		
+		If Is_Printing = True Then
+			xui.MsgboxAsync("The printer is already printing!" & CRLF & "Unable to start a new print." ,"Attention")
+			Return
+		End If
+		
+		
+		Dim sf As Object = xui.Msgbox2Async("Are you sure you want to print: " & CRLF & CRLF & Current_File & CRLF , "", "Yes", "", "No", Null)
+		
+		Wait For (sf) Msgbox_Result (Result As Int)
+		If Result = xui.DialogResponse_Positive Then
+			
+			Dim sf As Object = xui.Msgbox2Async("Before print starts, please check:" & CRLF & CRLF & _
+			"1) Resin tank is cleaned and locked in place" & CRLF & _
+			"2) There is enough resin" & CRLF & _
+			"3) Build plate is cleaned" & CRLF &  _
+			"4) Printer cover is placed" & CRLF & CRLF & _
+			"** Always print in a well ventilated area :) ** " _
+			,"","Ok","","",Null)
+			
+			Wait For (sf) Msgbox_Result (Result As Int)
+			
+			Printer_PrintFile(functions.SettingsMap.Get("IP"),Current_File)
+			'Current_File = ""
+						
+			Dim jo As JavaObject = TableView_Files
+			jo.RunMethodJO("getSelectionModel",Null).RunMethod("clearSelection",Null)
+			
+		End If
+	Else
+		xui.MsgboxAsync("No file selected!" ,"Attention")
+	End If
+	
+End Sub
+
+
+
+Sub Button_Upload_Click
+	
+	Dim openFile As FileChooser
+	
+	openFile.Initialize
+	openFile.InitialDirectory = functions.SettingsMap.Get("DIR")
+	openFile.SetExtensionFilter("Layouts",Array("*.cws","*.zip"))
+	openFile.Title ="Choose the file"
+	
+	Dim filename As String  = openFile.ShowOpen(MainForm)
+	If filename <>"" Then
+		Printer_UploadFile(functions.SettingsMap.Get("IP"),filename)
+		functions.SettingsMap.Put( "DIR",File.GetFileParent(filename))
+		functions.saveSettings(Save_Path, "settings.conf")
+	'Else '
+	'	xui.MsgboxAsync("No file selected!","Error")
+	End If
+	
+End Sub
+
+
+
+Sub Button_Save_Click
+	
+	' Put all variables to save in the MAP
+	functions.SettingsMap.Put( "IP", TextField_IP.Text)
+	functions.SettingsMap.Put( "DELAY", TextField_Delay.Text)
+	functions.SettingsMap.Put( "RETRIES", TextField_Retries.Text)
+	functions.saveSettings(Save_Path, "settings.conf")
+	xui.MsgboxAsync("Settings saved!","")
+	'Refresh and reconnect
+	Printer_GetFileList(functions.SettingsMap.get( "IP"))
+	
+End Sub
+
+
+Sub Button_Reconnect_Click
+	Printer_GetFileList(functions.SettingsMap.get( "IP"))
+End Sub
+
+
+Sub Button_Stop_Click
+
+	Dim sf As Object = xui.Msgbox2Async("Are you sure you want stop the print?", "", "Yes", "", "No", Null)
+		
+	Wait For (sf) Msgbox_Result (Result As Int)
+	If Result = xui.DialogResponse_Positive Then
+
+		If Is_Printing Then
+			Is_Paused = False
+			Button_Pause.Visible = True
+			Button_Pause.Enabled = True
+			Button_Resume.Visible = False
+			Button_Resume.Enabled = False
+						
+			Dim j As HttpJob
+			j.Initialize("", Me)
+			' Get the current layer picture
+			j.Download("http://" & functions.SettingsMap.Get("IP") & ":8081" & "/job/stop/" & Current_uuid)
+			Wait For (j) JobDone(j As HttpJob)
+			If j.Success Then
+				Label_printstatus.Text = "Print aborted!"
+				xui.Msgbox2Async("** WARNING! **" & CRLF & CRLF & "Please manually lift your build platform from the VAT!", "", "OK", "", "", Null)
+			End If
+			j.Release
+		End If
+	End If
+		
+End Sub
+
+
+
+Sub Button_Resume_Click
+	
+	If Is_Paused Then
+		
+		Button_Pause.Visible = True
+		Button_Pause.Enabled = True
+		Button_Resume.Visible = False
+		Button_Resume.Enabled = False
+						
+		Dim j As HttpJob
+		j.Initialize("", Me)
+		j.Download("http://" & functions.SettingsMap.Get("IP") & ":8081" & "/job/toggle/" & Current_uuid)
+		Wait For (j) JobDone(j As HttpJob)
+		If j.Success Then
+			Label_printstatus.Text = "Print is resumed!"
+		End If
+		j.Release
+		
+	End If
+	
+End Sub
+
+
+
+Sub Button_Pause_Click
+	
+	If Is_Printing And Is_Paused = False Then
+		
+		Button_Pause.Visible = False
+		Button_Pause.Enabled = False
+		Button_Resume.Visible = True
+		Button_Resume.Enabled = True
+		
+		Dim j As HttpJob
+		j.Initialize("", Me)
+		j.Download("http://" & functions.SettingsMap.Get("IP") & ":8081" & "/job/toggle/" & Current_uuid)
+		Wait For (j) JobDone(j As HttpJob)
+		If j.Success Then
+			Label_printstatus.Text = "Print is pausing!"
+		End If
+		j.Release
+	Else
+		Label_printstatus.Text = "Standby"
+	End If
+	
+End Sub
+
+
+Sub TableView_Files_SelectedRowChanged(Index As Int, Row() As Object)
+	If Index > -1 Then ' Check if any item on the list is selected
+		Current_File = GetCellValue(Index, 0) ' Get current filename from the list
+	Else
+		Current_File = ""		
+	End If
+End Sub
+
+
+' ********* DRAG AND DROP ************
+
+Sub DropTarget_DragEntered(e As DragEvent)
+	'Unused
+End Sub
+
+Sub DropTarget_DragExited(e As DragEvent)
+	'Unused
+End Sub
+
+Sub DropTarget_DragOver(e As DragEvent)
+	If IsValidDropEvent(e) Then e.AcceptTransferModes(TransferMode.COPY)
+End Sub
+
+Sub IsValidDropEvent(e As DragEvent) As Boolean
+	If e.GetDragboard.HasFiles Then
+		Dim files As List = e.GetDragboard.GetFiles
+		If files.Size = 1 Then
+			Dim filename As String = files.Get(0)
+			Return filename.ToLowerCase.EndsWith(".cws")
+		End If
+	End If
+	Return False
+End Sub
+
+Sub DropTarget_DragDropped(e As DragEvent)
+	
+	'We got incomming!
+	Dim filename As String = e.GetDragboard.GetFiles.Get(0)
+	Try 'If we get a valid filename try to upload it
+		Printer_UploadFile(functions.SettingsMap.Get("IP"),filename)
+	Catch
+		Log(LastException)
+
+	End Try
+	e.SetDropCompleted(True)
+	
+End Sub
+
+
+
+' **************************************************************
+#Region Helper Methods
+
+Sub TextField_Retries_TextChanged (Old As String, New As String)
+	' Check if retries is a number, else revert to previous
+	If Not (IsNumber(New)) Or New.Length = 0  Then
+		TextField_Retries.Text = Old
+	End If
+End Sub
+
+Sub TextField_IP_TextChanged (Old As String, New As String)
+	
+End Sub
+
+Sub TextField_Delay_TextChanged (Old As String, New As String)
+	' Check if delay is a number, else revert to previous
+	If Not (IsNumber(New)) Or New.Length = 0  Then
+		TextField_Delay.Text = Old
+	End If
+End Sub
+
+
+Sub Printer_GetInfo()
+	
+	'Black Magic stuff, proceed with caution!
+	
+	Label_status.TextColor = fx.Colors.Black
+	
+	Dim j As HttpJob
+	j.Initialize("", Me)
+	j.Download("http://" & functions.SettingsMap.Get("IP") & ":8081" & "/setting/printerInfo") ' Get file list, return Json file
+	Wait For (j) JobDone(j As HttpJob)
+	If j.Success Then
+	 Label_serialnb.Text = "Printer version: " &	j.GetString
+	End If
+	
+	j.Download("http://" & functions.SettingsMap.Get("IP") & ":8081" & "/setting/currentVersion") ' Get file list, return Json file
+	Wait For (j) JobDone(j As HttpJob)
+	If j.Success Then
+		Label_fw.Text = "Firmware version: " & j.GetString
+	End If
+	j.Release
+End Sub
+
+
+Sub Printer_GetFileList(ip As String)
+	
+	'Black Magic stuff, proceed with caution!
+	
+	Label_status.TextColor = fx.Colors.Black
+	
+	Dim j As HttpJob
+	j.Initialize("", Me)
+	j.Download("http://" &ip & ":8081" & "/file/list") ' Get file list, return Json file
+	Label_status.TextColor = fx.Colors.Blue
+	Label_status.Text = "Attempting to connect to printer at " & functions.SettingsMap.Get("IP")
+	
+	Wait For (j) JobDone(j As HttpJob)
+	If j.Success Then
+
+		Label_status.TextColor = fx.Colors.Black
+		Label_status.Text = "Connected to printer at " & functions.SettingsMap.Get("IP")
+					
+		TableView_Files.Items.Clear()
+		TableView_Files.ClearSelection()		
+		
+		TableView_Files.SetColumnWidth(0,TableView_Files.prefWidth * 0.40)
+		TableView_Files.SetColumnWidth(1,TableView_Files.prefWidth * 0.25)
+		TableView_Files.SetColumnWidth(2,TableView_Files.prefWidth * 0.30)
+		
+		' Parse the Json returned
+		
+		Dim parser As JSONParser
+		parser.Initialize(j.GetString)
+		Dim root As List = parser.NextArray
+		
+		Used_Space = 0
+
+		For Each colroot As Map In root
+			
+			Dim extension As String = colroot.Get("extension")
+			Dim size As Int = colroot.Get("size")/1024
+			Dim modifiedDate As String = colroot.Get("modifiedDate")
+			Dim name As String = colroot.Get("name")
+			
+			Used_Space = Used_Space + size ' Calculate used space
+			
+			' Prepare table data
+			Dim lbl0,lbl1,lbl2 As Label
+			
+			lbl0.Initialize("")
+			lbl0.Text = name & "." & extension
+						
+			lbl1.Initialize("")
+			lbl1.Text = size & " Kb"
+						
+			lbl2.Initialize("")
+			lbl2.Text = modifiedDate.SubString2(0,16)
+			
+			' Set table data array			
+			TableView_Files.Items.Add(Array As Object(lbl0,functions.WrapLabel(lbl1, "CENTER_RIGHT"),functions.WrapLabel(lbl2, "CENTER")))
+			
+		Next
+		' Update free space label (in Mb)
+		Label_Space.Text = NumberFormat2(Used_Space / 1024,1,2,2,False) & "Mb"
+		
+	Else
+		' Unable to connect
+		Label_status.TextColor = fx.Colors.Red
+		Label_status.Text = "Failed to connect to printer at " & functions.SettingsMap.Get("IP")
+		
+	End If
+	j.Release
+End Sub
+
+Sub Printer_UploadFile(ip As String, Filename As String)
+	
+	Label_status.TextColor = fx.Colors.Black
+
+	If File.Exists(File.GetFileParent(Filename), File.GetName(Filename)) Then
+		
+		Dim j As HttpJob
+		j.Initialize("", Me)
+		j.PostFile("http://" & ip & ":8081" & "/file/upload/" & File.GetName(Filename), File.GetFileParent(Filename), File.GetName(Filename))
+		
+		Label_status.TextColor = fx.Colors.From32Bit(0xFFEF4949)
+		Label_status.Text = "Uploading to printer, please wait ..."
+	
+		Wait For (j) JobDone(j As HttpJob)
+		If j.Success Then
+			Printer_GetFileList(functions.SettingsMap.Get("IP"))
+		Else
+			Label_status.TextColor = fx.Colors.Red
+			Label_status.Text = "Failed to connect to printer at " & functions.SettingsMap.Get("IP")
+		End If
+		j.Release
+	End If
+	
+End Sub
+
+
+
+Sub Printer_DeleteFile(ip As String, Filename As String)
+
+	Label_status.TextColor = fx.Colors.Black
+	Dim j As HttpJob
+	j.Initialize("", Me)
+	j.Download("http://" & ip & ":8081" & "/file/delete/" & Filename)
+	Label_status.Text = "Deleting file ..."
+	
+	Wait For (j) JobDone(j As HttpJob)
+	If j.Success Then
+		Log(j.ErrorMessage)
+		Printer_GetFileList(functions.SettingsMap.Get("IP"))
+		Label_status.Text = "Connected to printer at " & functions.SettingsMap.Get("IP")
+	Else
+		Label_status.TextColor = fx.Colors.Red
+		Label_status.Text = "Failed to delete the file!"
+	End If
+	j.Release
+	
+End Sub
+
+
+Sub Printer_PrintFile(ip As String, Filename As String)
+
+	If Is_Printing = False Then
+		
+		' Select print tab and lock it
+		TabPane1.SelectedIndex = 1
+		functions.DisableAllTabsExceptOf(TabPane1,TabPane1.Tabs.Get(1))
+		Label_printstatus.Text = "Initializing..."
+
+		Timer1.Enabled=True
+		Is_Printing = True
+		'Return ' FOR TESTING PURPOSES, NEVER UNCOMMENT
+
+		Label_status.TextColor = fx.Colors.Black
+		Dim j As HttpJob
+		j.Initialize("", Me)
+		j.Download("http://" & ip & ":8081" & "/file/print/" & Filename)
+		Label_status.Text = "Printing file ..."
+	
+		Wait For (j) JobDone(j As HttpJob)
+		If j.Success Then
+			
+			Is_Printing = True
+			Timer1.Enabled = True
+			
+		Else
+			Label_status.TextColor = fx.Colors.Red
+			Label_status.Text = "Failed to start print!"
+			Is_Printing = False
+			Timer1.Enabled = False
+		End If
+		j.Release
+		
+	Else
+		
+		xui.MsgboxAsync("The printer is already printing!" & CRLF & "Unable to start a new print." ,"Attention")
+		
+	End If
+	
+End Sub
+
+
+Sub Timer1_Tick
+	
+	'Handle timed events
+
+	If Is_Printing = True Or Is_Paused Then
+
+		Label_status.TextColor = fx.Colors.Black
+		Dim j As HttpJob
+		j.Initialize("", Me)
+		j.Download("http://" & functions.SettingsMap.Get("IP") & ":8081" & "/job/list/")
+		Wait For (j) JobDone(j As HttpJob)
+		If j.Success Then
+			Dim parser As JSONParser
+			parser.Initialize(j.GetString)
+			Dim root As List = parser.NextArray
+			For Each colroot As Map In root
+				
+				Dim printInProgress As Boolean = colroot.Get("printInProgress")
+				Dim printPaused As Boolean = colroot.Get("printPaused")
+				Log(printPaused)
+				
+				Is_Paused = printPaused
+				
+				If printInProgress Then
+					Dim jobName As String = colroot.Get("jobName")
+					Dim thickness As Double = colroot.Get("thickness")
+					Dim totalSlices As Int = colroot.Get("totalSlices")
+					Dim currentSlice As Int = colroot.Get("currentSlice")
+					Dim startTime As Int = colroot.Get("startTime")
+					Current_uuid = colroot.Get("id")
+					Dim zliftDistance As Double = colroot.Get("zliftDistance")
+					Dim elapsedTime As Int = colroot.Get("elapsedTime")
+					Dim status As String = colroot.Get("status")
+				End If
+			Next
+
+			If printInProgress Then
+				
+				Label_FileName.Text = jobName
+				Label_LayerHeight.Text = thickness & " mm"
+				Label_Layers.Text = currentSlice & " / " & totalSlices
+				Dim progress As Double = (100 * currentSlice) / totalSlices
+				ProgressBar_print.Progress =  progress / 100
+				MainForm.Title = NumberFormat2(progress,1,0,0,False) & "% - " & Title
+				Label_printstatus.Text = "Print in progress..."
+				
+				' Get the current layer picture
+				j.Download("http://" & functions.SettingsMap.Get("IP") & ":8081" & "/job/getImg/" & Current_uuid)
+				Wait For (j) JobDone(j As HttpJob)
+				If j.Success Then
+					ImageView_Layer.SetImage(j.GetBitmap) ' show current layer image :)
+					
+				End If
+				
+				
+			Else
+				
+				' Clean up to default
+				Is_Paused = False
+				Button_Pause.Visible = True
+				Button_Pause.Enabled = True
+				Button_Resume.Visible = False
+				Button_Resume.Enabled = False
+				
+				ImageView_Layer.SetImage(elfin) ' Pretty printer
+				functions.enableAllTabs(TabPane1,TabPane1.Tabs.Get(1))
+				Printer_GetFileList(functions.SettingsMap.Get("IP"))
+				Is_Printing = False
+				Timer1.Enabled = False
+				Label_printstatus.Text = "Stand by"
+				MainForm.Title = Title
+				Label_FileName.Text = ""
+				Label_LayerHeight.Text = "0.00 mm"
+				Label_Layers.Text = "0 / 0"
+				
+			End If
+						
+			If Is_Paused Then
+				Label_printstatus.Text = "Print is paused!"
+				Is_Paused = True
+			End If
+			
+			j.Release
+		End If
+		
+	Else
+		
+		xui.MsgboxAsync("The printer is already printing!" & CRLF & "Unable to start a new print." ,"Attention")
+		
+	End If
+	
+
+End Sub
+
+
+Sub GetLabel(RowIndex As Int, CellIndex As Int) As Label
+	Dim row() As Object = TableView_Files.Items.Get(RowIndex)
+	Return row(CellIndex)
+End Sub
+
+Sub CreateRow(Row() As String) As Object()
+	Dim labels(Row.Length) As Object
+	For i = 0 To Row.Length - 1
+		Dim lbl As Label
+		lbl.Initialize("")
+		lbl.Text = Row(i)
+		labels(i) = lbl
+	Next
+	Return labels
+End Sub
+
+Sub GetCellValue(RowIndex As Int, CellIndex As Int) As String
+	Return GetLabel(RowIndex, CellIndex).Text
+End Sub
+
+Sub SetCellValue(RowIndex As Int, CellIndex As Int, Value As String)
+	GetLabel(RowIndex, CellIndex).Text = Value
+End Sub
+
+Sub SetColumnStyle(Index As Int, Style As String)
+	Dim jo As JavaObject = TableView_Files
+	Dim Column As JavaObject = jo.RunMethodJO("getColumns", Null).RunMethod("get", Array(Index))
+	Column.RunMethod("setStyle", Array(Style))
+End Sub
+
+#End Region
+
