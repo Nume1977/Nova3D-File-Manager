@@ -1,5 +1,5 @@
 # Nova3D-File-Manager
-Simple File Manager for Nova3D Printers
+Simple File Manager for Nova3D Printers (Only tested on ELFIN)
 
 #### Features
 - Easy to use interface
