@@ -6,7 +6,11 @@ Simple File Manager for Nova3D Printers (Only tested on ELFIN)
 - Drag & Drop support for uploading cws files (only supports 1 file at a time)
 - Used space calculation
 - Basic print functions
+- MultiOS
 - Free :)
+
+#### Requirements
+Java runtime enviroment
 
 #### Screenshots
 
