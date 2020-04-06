@@ -1,4 +1,4 @@
-# Nova3D-File-Manager - V1.0.2004040
+# Nova3D-File-Manager - V1.0.2004060 (Updated 2020-04-06)
 Simple File Manager for Nova3D Printers (Only tested on ELFIN)
 
 #### Features
