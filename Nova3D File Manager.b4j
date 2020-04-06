@@ -72,12 +72,12 @@ Sub Process_Globals
 	Dim FirstTime As Boolean = True
 	
 	Dim Title As String ="Nova3D File Manager"
-	Dim Version As String = "1.0.2004040" ' Version: MAJOR.MINOR.YEAR2 MONTH2 DAY2 DAILYREVISION1 (YYMMDDR)
+	Dim Version As String = "1.0.2004060" ' Version: MAJOR.MINOR.YEAR2 MONTH2 DAY2 DAILYREVISION1 (YYMMDDR)
 	Dim IP_Port = "8081" ' The printer web server port ' Not yet used
 	
 	Private Timer1 As Timer
 	Dim elfin As Image 
-	Dim layer_image As Image
+	Dim layer_image As B4XBitmap
 	
 	Private fx As JFX
 	Private MainForm As Form
@@ -464,6 +464,7 @@ Sub Printer_GetFileList(ip As String)
 	
 	'Black Magic stuff, proceed with caution!
 	
+	CallSubDelayed(Me,"Printer_IsPrinting")
 	Label_status.TextColor = fx.Colors.Black
 	
 	Dim j As HttpJob
@@ -567,7 +568,7 @@ Sub Printer_DeleteFile(ip As String, Filename As String)
 	
 	Wait For (j) JobDone(j As HttpJob)
 	If j.Success Then
-		Log(j.ErrorMessage)
+		'Log(j.ErrorMessage)
 		Printer_GetFileList(functions.SettingsMap.Get("IP"))
 		Label_status.Text = "Connected to printer at " & functions.SettingsMap.Get("IP")
 	Else
@@ -620,6 +621,45 @@ Sub Printer_PrintFile(ip As String, Filename As String)
 	
 End Sub
 
+Sub Printer_IsPrinting()
+	Dim j As HttpJob
+	j.Initialize("", Me)
+	j.Download("http://" & functions.SettingsMap.Get("IP") & ":8081" & "/job/list/")
+	Wait For (j) JobDone(j As HttpJob)
+	If j.Success Then
+		Dim parser As JSONParser
+		parser.Initialize(j.GetString)
+		Dim root As List = parser.NextArray
+		For Each colroot As Map In root
+				
+			Dim printInProgress As Boolean = colroot.Get("printInProgress")
+			
+			If printInProgress Then
+				
+				TabPane1.SelectedIndex = 1
+				functions.DisableAllTabsExceptOf(TabPane1,TabPane1.Tabs.Get(1))
+
+				Timer1.Enabled=True
+				Is_Printing = True
+				
+				Dim jobName As String = colroot.Get("jobName")
+				Dim thickness As Double = colroot.Get("thickness")
+				Dim totalSlices As Int = colroot.Get("totalSlices")
+				Dim currentSlice As Int = colroot.Get("currentSlice")
+				Dim startTime As Int = colroot.Get("startTime")
+				Current_uuid = colroot.Get("id")
+				Dim zliftDistance As Double = colroot.Get("zliftDistance")
+				Dim elapsedTime As Int = colroot.Get("elapsedTime")
+				Dim status As String = colroot.Get("status")
+				
+				Exit ' Break the loop
+				
+			End If
+		Next
+
+	End If
+End Sub
+
 
 Sub Timer1_Tick
 	
@@ -640,24 +680,28 @@ Sub Timer1_Tick
 				
 				Dim printInProgress As Boolean = colroot.Get("printInProgress")
 				Dim printPaused As Boolean = colroot.Get("printPaused")
-				Log(printPaused)
+				'Log(printInProgress)
 				
 				Is_Paused = printPaused
 				
-				If printInProgress Then
-					Dim jobName As String = colroot.Get("jobName")
-					Dim thickness As Double = colroot.Get("thickness")
-					Dim totalSlices As Int = colroot.Get("totalSlices")
-					Dim currentSlice As Int = colroot.Get("currentSlice")
-					Dim startTime As Int = colroot.Get("startTime")
-					Current_uuid = colroot.Get("id")
-					Dim zliftDistance As Double = colroot.Get("zliftDistance")
-					Dim elapsedTime As Int = colroot.Get("elapsedTime")
-					Dim status As String = colroot.Get("status")
-				End If
+				If printInProgress Then Exit ' Found a print, exit the loop
+				
 			Next
 
 			If printInProgress Then
+
+				Dim jobName As String = colroot.Get("jobName")
+				Dim thickness As Double = colroot.Get("thickness")
+				Dim totalSlices As Int = colroot.Get("totalSlices")
+				Dim currentSlice As Int = colroot.Get("currentSlice")
+				Dim startTime As Int = colroot.Get("startTime")
+				Current_uuid = colroot.Get("id")
+				Dim zliftDistance As Double = colroot.Get("zliftDistance")
+				Dim elapsedTime As Int = colroot.Get("elapsedTime")
+				Dim status As String = colroot.Get("status")
+				
+				'Log(elapsedTime)
+				Log (DateTime.Gethour(elapsedTime) & ":" &  DateTime.Getminute(elapsedTime) & ":" & DateTime.GetSecond(elapsedTime))
 				
 				Label_FileName.Text = jobName
 				Label_LayerHeight.Text = thickness & " mm"
@@ -671,10 +715,13 @@ Sub Timer1_Tick
 				j.Download("http://" & functions.SettingsMap.Get("IP") & ":8081" & "/job/getImg/" & Current_uuid)
 				Wait For (j) JobDone(j As HttpJob)
 				If j.Success Then
-					ImageView_Layer.SetImage(j.GetBitmap) ' show current layer image :)
 					
-				End If
-				
+					If j.GetBitmap.Height > 0 Then	
+						layer_image = j.GetBitmap
+						FitImageToView(layer_image.Rotate(270), ImageView_Layer)' show current layer image :)
+					End If
+					
+				End If			
 				
 			Else
 				
@@ -685,6 +732,7 @@ Sub Timer1_Tick
 				Button_Resume.Visible = False
 				Button_Resume.Enabled = False
 				
+				ProgressBar_print.Progress =  0
 				ImageView_Layer.SetImage(elfin) ' Pretty printer
 				functions.enableAllTabs(TabPane1,TabPane1.Tabs.Get(1))
 				Printer_GetFileList(functions.SettingsMap.Get("IP"))
@@ -744,6 +792,45 @@ Sub SetColumnStyle(Index As Int, Style As String)
 	Dim jo As JavaObject = TableView_Files
 	Dim Column As JavaObject = jo.RunMethodJO("getColumns", Null).RunMethod("get", Array(Index))
 	Column.RunMethod("setStyle", Array(Style))
+End Sub
+
+Sub RotateBitmap (bmp As B4XBitmap, Degrees As Float) As B4XBitmap
+	Dim cvs As B4XCanvas
+	Dim panel As B4XView = xui.CreatePanel("")
+	'Dim panel1 As B4XView = xui.CreatePanel("")
+	panel.SetLayoutAnimated(0, 0, 0, bmp.Width, bmp.Height)
+	cvs.Initialize(panel)
+	cvs.DrawBitmapRotated(bmp, cvs.TargetRect, Degrees)
+	'cvs.Invalidate
+	'Sleep(0)
+	Dim b As B4XBitmap = cvs.CreateBitmap
+	cvs.Release
+	Return b
+End Sub
+
+Sub FitImageToView(bmp As B4XBitmap, ImageView As B4XView)
+	Dim scale As Float = 1
+    #if B4i
+    scale = GetDeviceLayoutValues.NonnormalizedScale
+    #End If
+	ImageView.SetBitmap(bmp.Resize(ImageView.Width * scale, ImageView.Height * scale, True))
+End Sub
+
+Sub FillImageToView(bmp As B4XBitmap, ImageView As B4XView)
+	Dim bmpRatio As Float = bmp.Width / bmp.Height
+	Dim viewRatio As Float = ImageView.Width / ImageView.Height
+	If viewRatio > bmpRatio Then
+		Dim NewHeight As Int = bmp.Width / viewRatio
+		bmp = bmp.Crop(0, bmp.Height / 2 - NewHeight / 2, bmp.Width, NewHeight)
+	Else if viewRatio < bmpRatio Then
+		Dim NewWidth As Int = bmp.Height * viewRatio
+		bmp = bmp.Crop(bmp.Width / 2 - NewWidth / 2, 0, NewWidth, bmp.Height)
+	End If
+	Dim scale As Float = 1
+    #if B4i
+    scale = GetDeviceLayoutValues.NonnormalizedScale
+    #End If
+	ImageView.SetBitmap(bmp.Resize(ImageView.Width * scale, ImageView.Height * scale, True))
 End Sub
 
 #End Region

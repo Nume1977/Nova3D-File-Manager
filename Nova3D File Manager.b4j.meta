@@ -1,9 +1,9 @@
-﻿ModuleBookmarks0=638
+﻿ModuleBookmarks0=682
 ModuleBookmarks1=
 ModuleBreakpoints0=
 ModuleBreakpoints1=
 ModuleClosedNodes0=1
 ModuleClosedNodes1=
-NavigationStack=Main,Printer_GetFileList,425,0,Main,Printer_PrintFile,541,6,Main,Process_Globals,45,6,Main,Application_Error,151,0,Main,Button_Delete_Click,173,0,Main,Button_Print_Click,212,0,Main,Button_Upload_Click,234,0,Main,Button_Stop_Click,284,6,Main,Button_Resume_Click,308,6,Main,Button_Pause_Click,332,6,Main,SetColumnStyle,713,0
+NavigationStack=Main,SetColumnStyle,754,0,Main,FillImageToView,784,0,Main,FitImageToView,774,0,Main,RotateBitmap,764,5,Visual Designer,tab_printer.bjl,-100,6,Main,Printer_IsPrinting,614,6,Main,Printer_DeleteFile,536,0,Main,DropTarget_DragDropped,374,0,Main,Timer1_Tick,673,6,Main,Process_Globals,40,1
 SelectedBuild=0
 VisibleModules=1
