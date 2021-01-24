@@ -116,7 +116,7 @@ Sub AppStart (Form1 As Form, Args() As String)
 	functions.SettingsMap.Initialize	
 	functions.SettingsMap.Put( "IP", "192.168.1.1")
 	functions.SettingsMap.Put( "DELAY", "5")
-	functions.SettingsMap.Put( "RETRIES", "5")
+	functions.SettingsMap.Put( "RETRIES", "10")
 	functions.SettingsMap.Put( "DIR", File.DirApp)
 	
 	If File.Exists(Save_Path,"settings.conf") Then
