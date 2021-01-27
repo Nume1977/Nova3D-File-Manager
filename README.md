@@ -1,5 +1,12 @@
-# Nova3D-File-Manager - V1.0.2101240 (Updated 2021-01-24)
-Simple File Manager for Nova3D Printers (Only tested on ELFIN)
+# Nova3D-File-Manager - V1.0.2101270 (Updated 2021-01-27)
+Simple File Manager for Nova3D Printers (Only tested on ELFIN 1 with firmware version 3.5.0)
+
+#### Known firmware bugs (v3.5.0), not related to File Manager
+- Pause does not work (the printer receives the order, but will only pause when it likes!)
+- Stopping a print will cause the firmware to output lighton=true (uv light on) the next time your start a new print even if the light is off!
+  This will make the first layer image to fail loading on the manager, there is no solution for this on the manager side.
+- There is a firewall/bug? on the firmware HTTP server that will block your access if there are too many requests (printer reboot needed!)
+  The solution was to only download every other layer image, and limit the minimum time between requests to 5seconds.
 
 #### Features
 - Easy to use interface
