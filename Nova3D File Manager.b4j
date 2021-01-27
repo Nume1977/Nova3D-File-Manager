@@ -5,9 +5,10 @@ File2=Main.bjl
 File3=nova-001.png
 File4=nova-002.png
 File5=NovaMaker.ico
-File6=tab_files.bjl
-File7=tab_options.bjl
-File8=tab_printer.bjl
+File6=Please-Stand-By.jpg
+File7=tab_files.bjl
+File8=tab_options.bjl
+File9=tab_printer.bjl
 FileGroup1=Default Group
 FileGroup2=Default Group
 FileGroup3=Default Group
@@ -16,6 +17,7 @@ FileGroup5=Default Group
 FileGroup6=Default Group
 FileGroup7=Default Group
 FileGroup8=Default Group
+FileGroup9=Default Group
 Group=Default Group
 Library1=jcore
 Library2=jfx
@@ -27,7 +29,7 @@ Library7=javaobject
 Library8=jokhttputils2
 Library9=draganddrop2
 Module1=functions
-NumberOfFiles=8
+NumberOfFiles=9
 NumberOfLibraries=9
 NumberOfModules=1
 Version=8.5
@@ -72,11 +74,12 @@ Sub Process_Globals
 	Dim FirstTime As Boolean = True
 	
 	Dim Title As String ="Nova3D File Manager"
-	Dim Version As String = "1.0.2101240" ' Version: MAJOR.MINOR.YEAR2 MONTH2 DAY2 DAILYREVISION1 (YYMMDDR)
+	Dim Version As String = "1.0.2101270" ' Version: MAJOR.MINOR.YEAR2 MONTH2 DAY2 DAILYREVISION1 (YYMMDDR)
 	Dim IP_Port = "8081" ' The printer web server port ' Not yet used
 	
 	Private Timer1 As Timer
 	Dim elfin As Image 
+	Dim psb As Image 
 	Dim layer_image As B4XBitmap
 	Dim lastslice As Int = -1
 	
@@ -128,6 +131,7 @@ Sub AppStart (Form1 As Form, Args() As String)
 	
 	' Load the Elfin image and create a blank for the printer layers
 	elfin = fx.LoadImage(File.DirAssets,"elfin.jpg")
+	psb = fx.LoadImage(File.DirAssets,"Please-Stand-By.jpg")
 		
 	MainForm = Form1
 	MainForm.Initialize("MainForm", 1000, 700) ' Window Size
@@ -167,7 +171,7 @@ Sub AppStart (Form1 As Form, Args() As String)
 	
 	MainForm.Show ' Ocuspocus
 	
-	Timer1.Initialize("Timer1", functions.SettingsMap.Get("RETRIES")*1000) ' Timed events for when printing 
+	Timer1.Initialize("Timer1", (functions.SettingsMap.Get("RETRIES")+5)*1000) ' Timed events for when printing 
 	Timer1.Enabled = False ' Timer is on hold until the print starts
 	
 	Sleep(functions.SettingsMap.Get("DELAY")) ' Wait before connect
@@ -232,6 +236,8 @@ Sub Button_Print_Click
 			,"","Ok","","",Null)
 			
 			Wait For (sf) Msgbox_Result (Result As Int)
+			
+			lastslice = -1
 			
 			Printer_PrintFile(functions.SettingsMap.Get("IP"),Current_File)
 			'Current_File = ""
@@ -311,6 +317,7 @@ Sub Button_Stop_Click
 			If j.Success Then
 				Label_printstatus.Text = "Print aborted!"
 				xui.Msgbox2Async("** WARNING! **" & CRLF & CRLF & "Please manually lift your build platform from the VAT!", "", "OK", "", "", Null)
+				lastslice = -1
 			End If
 			j.Release
 		End If
@@ -601,12 +608,16 @@ Sub Printer_PrintFile(ip As String, Filename As String)
 		j.Initialize("", Me)
 		j.Download("http://" & ip & ":8081" & "/file/print/" & Filename)
 		Label_status.Text = "Printing file ..."
-	
+		lastslice = -1
+		
 		Wait For (j) JobDone(j As HttpJob)
 		If j.Success Then
 			
 			Is_Printing = True
+			Timer1.Interval = DateTime.TicksPerSecond * 2
 			Timer1.Enabled = True
+			ImageView_Layer.SetImage(psb)
+			
 			
 		Else
 			Label_status.TextColor = fx.Colors.Red
@@ -650,10 +661,10 @@ Sub Printer_IsPrinting()
 				Dim totalSlices As Int = colroot.Get("totalSlices")
 				Dim currentSlice As Int = colroot.Get("currentSlice")
 				Dim currentSliceTime As Int = colroot.Get("averageSliceTime")
-				Dim startTime As Int = colroot.Get("startTime")
+				Dim startTime As Long = colroot.Get("startTime")
 				Current_uuid = colroot.Get("id")
 				Dim zliftDistance As Double = colroot.Get("zliftDistance")
-				Dim elapsedTime As Int = colroot.Get("elapsedTime")
+				Dim elapsedTime As Long = colroot.Get("elapsedTime")
 				Dim status As String = colroot.Get("status")
 				
 				Label_FileName.Text = jobName
@@ -680,7 +691,8 @@ End Sub
 Sub Timer1_Tick
 	
 	'Handle timed events
-		
+		Dim shutter As Boolean = False
+	
 		If Is_Printing = True Or Is_Paused Then
 
 			Label_status.TextColor = fx.Colors.Black
@@ -693,34 +705,71 @@ Sub Timer1_Tick
 				Dim parser As JSONParser
 				parser.Initialize(j.GetString)
 				'Log(j.GetString)
-				Dim root As List = parser.NextArray
+				
+				Dim root As List = parser.NextArray				
 				For Each colroot As Map In root
 				
 					Dim printInProgress As Boolean = colroot.Get("printInProgress")
 					Dim printPaused As Boolean = colroot.Get("printPaused")
 					'Dim printPaused As Boolean = colroot.Get("status")
-			
+
 					Is_Paused = printPaused
 				
 					If printInProgress Then 
 						Current_uuid = colroot.Get("id")
-						'Log(Current_uuid)
-						
+												
 						Dim jobName As String = colroot.Get("jobName")
 						Dim thickness As Double = colroot.Get("thickness")
 						Dim totalSlices As Int = colroot.Get("totalSlices")
 						Dim currentSlice As Int = colroot.Get("currentSlice")
-						Dim startTime As Int = colroot.Get("startTime")
-						Dim currentSliceTime As Int = colroot.Get("lastNAverageSliceTime")
+						'Log(colroot.Get("printer"))
+						Dim startTime As Long = colroot.Get("startTime")
+						Dim currentSliceTime As Long = colroot.Get("currentSliceTime")
+						Dim averageSliceTime As Long = colroot.Get("averageSliceTime")
 						
 						Dim zliftDistance As Double = colroot.Get("zliftDistance")
-						Dim elapsedTime As Int = colroot.Get("elapsedTime")
-						Dim status As String = colroot.Get("status")			
-						'Log(status)
-						Exit ' Found a print, exit this loop					
+						Dim elapsedTime As Long = colroot.Get("elapsedTime")
+						Dim status As String = colroot.Get("status")
+
+						Dim delaytime As Long
+						
+						'If the slice time is lower than 10s or higher than 20s, set it to 10s						
+						'The firmware does not like too many requests (don't know if it is a firewall or if the http server crashes). 
+						'It will also drop the connection if it changes layer while we are receiving the image ...
+						'This is an attempt to sync the request time with the layer change time with lower and upper limits
+						'enforced
+						
+						'The currentSliceTime seems to be the sum of up motion + down motion + layer exposure time
+						'It is around 10s~12s, for a 6.5s layer exposure and 5mm up/down @ 120mm/s
+						
+						If currentSliceTime < DateTime.TicksPerSecond * 5 Or currentSliceTime > DateTime.TicksPerSecond * 20 Then
+								delaytime  = DateTime.TicksPerSecond * 5		'10s before requests
+							Else
+								delaytime = currentSliceTime / 2 + 250					'Sync to exact layer time, it will get out of sync eventually ...
+						End If
+																							
+						If colroot.Get("printer") <> Null Then	'Check if there is "printer" data
+							
+							Dim printer As String = colroot.Get("printer")
+							If (printer.ToLowerCase.IndexOf("lighton=true")) > 0 Then 'Check if the light is on or not
+								shutter = True
+							Else
+								shutter = False
+							End If
+						Else
+							shutter = False							
+						End If
+																		
+						'Log($"Light: ${shutter}"$)
+						'Log($"Slice time was: ${DateTime.GetSecond(currentSliceTime)}s -> Set to:${DateTime.GetSecond(delaytime)}s"$)
+						
+						Timer1.Interval = delaytime		' Set the timer interval to calculated delaytime
+						Exit 							' Found a running print, exit this loop			
+								
 					End If
 				
 				Next
+				j.Release
 				
 			If printInProgress Then
 
@@ -729,31 +778,42 @@ Sub Timer1_Tick
 					Label_Layers.Text = currentSlice & " / " & totalSlices
 					Dim progress As Double = (100 * currentSlice) / totalSlices
 					ProgressBar_print.Progress =  progress / 100
+					
 					MainForm.Title = $"$1.1{progress}% - ${Title}"$ 
-					Label_elapsed.Text = $"$2{DateTime.Gethour(elapsedTime-DateTime.TicksPerHour*1)}:$2{DateTime.Getminute(elapsedTime)}:$2{DateTime.GetSecond(elapsedTime)} / $2{DateTime.Gethour(currentSliceTime*totalSlices-DateTime.TicksPerHour*1)}:$2{DateTime.Getminute(currentSliceTime*totalSlices)}:$2{DateTime.Getsecond(currentSliceTime*totalSlices)} (${DateTime.Getsecond(currentSliceTime)}s)"$
+					Label_elapsed.Text = $"$2{DateTime.Gethour(elapsedTime-DateTime.TicksPerHour*1)}:$2{DateTime.Getminute(elapsedTime)}:$2{DateTime.GetSecond(elapsedTime)} / $2{DateTime.Gethour(averageSliceTime*totalSlices-DateTime.TicksPerHour*1)}:$2{DateTime.Getminute(averageSliceTime*totalSlices)}:$2{DateTime.Getsecond(averageSliceTime*totalSlices)} (${DateTime.Getsecond(averageSliceTime)}s)"$
 					Label_printstatus.Text = "Print in progress..."
-	
-					If currentSlice > lastslice+1 Or currentSlice=totalSlices Then
+					
+				    'Log($"$2{DateTime.Gethour(startTime-DateTime.TicksPerHour*1)}:$2{DateTime.Getminute(startTime)}:$2{DateTime.GetSecond(startTime)}"$)
+					'Log($"${currentSlice}"$)
+					'Log($"${DateTime.Now + startTime}:${(DateTime.Now + startTime)+ DateTime.TicksPerSecond * 20}"$)
+
+					'Is the UV ligth on? and is the current image slice different from the last one we got?
+					If shutter And currentSlice <> lastslice And currentSlice Mod 2 = 0 Then
+						
 						lastslice = currentSlice
-						' Get the current layer picture
-						j.Release
+
+						' Download the current layer picture, and pray it is sent before the layer changes, or else
+						' the connection will be dropped by the printer and a error will show in our logs (console only)
+						' Not our fault really ... The firmware should complete the requested task instead of kicking us/fail
+						
 						j.Download("http://" & functions.SettingsMap.Get("IP") & ":8081" & "/job/getImg/" & Current_uuid)
-						'Log("---- IMAGE ----")
+						'Log("---- DOWNLOADING IMG ----")
 						Wait For (j) JobDone(j As HttpJob)
 						If j.Success Then
-						
+
 							If j.GetBitmap.Height > 0 Then
 								layer_image = j.GetBitmap
 								'FillImageToView(layer_image.Rotate(270), ImageView_Layer)' show current layer image :)
 								FitImageToView(layer_image.Rotate(270), ImageView_Layer)' show current layer image :)
+								'Log("---- IMG DONE ----")
 							End If
+							
 						Else
 							Log(j.ErrorMessage)
 						End If
 						j.Release
 					End If
-
-				
+					
 				Else
 				
 					' Clean up to default
@@ -775,6 +835,9 @@ Sub Timer1_Tick
 					Label_LayerHeight.Text = "0.00 mm"
 					Label_Layers.Text = "0 / 0"
 					Label_elapsed.Text = "--:--:-- / --:--:-- (--s)"
+					lastslice = -1
+					shutter = False
+					Timer1.Enabled = False				
 				
 				End If
 						
