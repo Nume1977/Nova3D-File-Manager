@@ -5,6 +5,7 @@ Simple File Manager for Nova3D Printers (Only tested on ELFIN 1 with firmware ve
 - Pause does not work (the printer receives the order, but will only pause when it likes!)
 - Stopping a print will cause the firmware to output lighton=true (uv light on) the next time your start a new print even if the light is off!
   This will make the first layer image to fail loading on the manager, there is no solution for this on the manager side.
+- If when starting a print the file parsing fails, the firmware will always output lighton=false for the entire print.
 - There is a firewall/bug? on the firmware HTTP server that will block your access if there are too many requests (printer reboot needed!)
   The solution was to only download every other layer image, and limit the minimum time between requests to 5seconds.
 
